@@ -1,58 +1,71 @@
 pipeline {
-  agent any
-  tools { 
-        maven 'Maven_3_5_2'  
-    }
-   stages{
-    stage('CompileandRunSonarAnalysis') {
-            steps {	
-		sh 'mvn clean verify sonar:sonar -Dsonar.projectKey=asgbuggywebapp -Dsonar.organization=asgbuggywebapp -Dsonar.host.url=https://sonarcloud.io -Dsonar.token=932558e169d66a8f1d1adf470b908a46156f5844'
-			}
+    agent any
+
+    tools {
+        maven 'Maven_3_8_4'
     }
 
-	stage('RunSCAAnalysisUsingSnyk') {
-            steps {		
-				withCredentials([string(credentialsId: 'SNYK_TOKEN', variable: 'SNYK_TOKEN')]) {
-					sh 'mvn snyk:test -fn'
-				}
-			}
+    environment {
+        PATH = "/usr/local/bin:/usr/bin:${env.PATH}"
+        DOCKER_IMAGE = "asg"
     }
 
-	stage('Build') { 
-            steps { 
-               withDockerRegistry([credentialsId: "dockerlogin", url: ""]) {
-                 script{
-                 app =  docker.build("asg")
-                 }
-               }
-            }
-    }
+    stages {
 
-	stage('Push') {
+        stage('Compile and Run Sonar Analysis') {
             steps {
-                script{
-                    docker.withRegistry('https://145988340565.dkr.ecr.us-west-2.amazonaws.com', 'ecr:us-west-2:aws-credentials') {
-                    app.push("latest")
+                withCredentials([string(credentialsId: 'SONAR_TOKEN', variable: 'SONAR_TOKEN')]) {
+                    sh '''
+                    mvn clean verify sonar:sonar \
+                    -Dsonar.projectKey=webappdevsecproject \
+                    -Dsonar.organization=webappdevsecproject \
+                    -Dsonar.host.url=https://sonarcloud.io \
+                    -Dsonar.token=$SONAR_TOKEN
+                    '''
+                }
+            }
+        }
+
+        stage('Run SCA Analysis Using Snyk') {
+            steps {
+                withCredentials([string(credentialsId: 'SNYK_TOKEN', variable: 'SNYK_TOKEN')]) {
+                    sh '''
+                    snyk auth $SNYK_TOKEN
+                    snyk test || true
+                    '''
+                }
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                script {
+                    app = docker.build("${DOCKER_IMAGE}")
+                }
+            }
+        }
+
+        stage('Push Docker Image to AWS ECR') {
+            steps {
+                script {
+                    docker.withRegistry(
+                        'https://891377015455.dkr.ecr.ap-southeast-2.amazonaws.com',
+                        'ecr:ap-southeast-2:aws-credentials'
+                    ) {
+                        app.push("latest")
                     }
                 }
             }
-    	}
-	   
-	stage('Kubernetes Deployment of ASG Bugg Web Application') {
-	   steps {
-	      withKubeConfig([credentialsId: 'kubelogin']) {
-		  sh('kubectl delete all --all -n devsecops')
-		  sh ('kubectl apply -f deployment.yaml --namespace=devsecops')
+        }
+        
+       stage('Kubernetes Deployment of ASG Bugg Web Application') {
+	      steps {
+	        withKubeConfig([credentialsId: 'kubelogin']) {
+		    sh('kubectl delete all --all -n devsecops')
+		    sh ('kubectl apply -f deployment.yaml --namespace=devsecops')
 		}
 	      }
-   	}
-	   
-	stage ('wait_for_testing'){
-	   steps {
-		   sh 'pwd; sleep 180; echo "Application Has been deployed on K8S"'
 	   	}
-	   }
-	   
 	stage('RunDASTUsingZAP') {
           steps {
 		    withKubeConfig([credentialsId: 'kubelogin']) {
