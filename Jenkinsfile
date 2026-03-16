@@ -40,7 +40,7 @@ pipeline {
         stage('Build Docker Image') {
             steps {
                 script {
-                    app = docker.build("${DOCKER_IMAGE}")
+                    def app = docker.build("${DOCKER_IMAGE}")
                 }
             }
         }
@@ -52,42 +52,41 @@ pipeline {
                         'https://891377015455.dkr.ecr.ap-southeast-2.amazonaws.com',
                         'ecr:ap-southeast-2:aws-credentials'
                     ) {
-                        app.push("latest")
+                        docker.image("${DOCKER_IMAGE}").push("latest")
                     }
                 }
             }
         }
-        
-       stage('Kubernetes Deployment of ASG Bugg Web Application') {
-	      steps {
-	        withKubeConfig([credentialsId: 'kubelogin']) {
-		    sh('kubectl delete all --all -n devsecops')
-		    sh ('kubectl apply -f deployment.yaml --namespace=devsecops')
-		}
-	   }
-   	  }
 
-	   stage ('wait_for_testing'){
-	      steps {
-		   sh 'pwd; sleep 180; echo "Application Has been deployed on K8S"'
-	   	}
-	   }
-	   
-	  stage('RunDASTUsingZAP') {
-        steps {
-          withKubeConfig([credentialsId: 'kubelogin']) {
-            sh '''
-            TARGET=$(kubectl get services/asgbuggy --namespace=devsecops -o json | jq -r ".status.loadBalancer.ingress[0].hostname")
-
-            docker run --rm -v $(pwd):/zap/wrk/:rw \
-            owasp/zap2docker-stable \
-            zap-baseline.py -t http://$TARGET -r zap_report.html
-            '''
-            archiveArtifacts artifacts: 'zap_report.html'
+        stage('Kubernetes Deployment of ASG Bugg Web Application') {
+            steps {
+                withKubeConfig([credentialsId: 'kubelogin']) {
+                    sh 'kubectl delete all --all -n devsecops'
+                    sh 'kubectl apply -f deployment.yaml --namespace=devsecops'
+                }
+            }
         }
+
+        stage('wait_for_testing') {
+            steps {
+                sh 'pwd; sleep 180; echo "Application Has been deployed on K8S"'
+            }
+        }
+
+        stage('RunDASTUsingZAP') {
+            steps {
+                withKubeConfig([credentialsId: 'kubelogin']) {
+                    sh '''
+                    TARGET=$(kubectl get services/asgbuggy --namespace=devsecops -o json | jq -r ".status.loadBalancer.ingress[0].hostname")
+
+                    docker run --rm -v $(pwd):/zap/wrk/:rw \
+                    owasp/zap2docker-stable \
+                    zap-baseline.py -t http://$TARGET -r zap_report.html
+                    '''
+                    archiveArtifacts artifacts: 'zap_report.html'
+                }
+            }
+        }
+
     }
 }
-		
-  }
-}
-		
