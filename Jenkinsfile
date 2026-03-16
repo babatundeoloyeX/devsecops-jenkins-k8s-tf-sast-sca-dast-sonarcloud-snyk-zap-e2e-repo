@@ -74,19 +74,19 @@ pipeline {
         }
 
         stage('RunDASTUsingZAP') {
-            steps {
-                withKubeConfig([credentialsId: 'kubelogin']) {
-                    sh '''
-                    TARGET=$(kubectl get services/asgbuggy --namespace=devsecops -o json | jq -r ".status.loadBalancer.ingress[0].hostname")
+           steps {
+             withKubeConfig([credentialsId: 'kubelogin']) {
+                sh '''
+                TARGET=$(kubectl get services/asgbuggy --namespace=devsecops -o json | jq -r ".status.loadBalancer.ingress[0].hostname")
 
-                    docker run --rm -v $(pwd):/zap/wrk/:rw \
-                    owasp/zap2docker-stable \
-                    zap-baseline.py -t http://$TARGET -r zap_report.html
-                    '''
-                    archiveArtifacts artifacts: 'zap_report.html'
-                }
-            }
+                docker run --rm -v $(pwd):/zap/wrk/:rw \
+                zaproxy/zap-stable \
+                zap-baseline.py -t http://$TARGET -r zap_report.html
+                '''
+                archiveArtifacts artifacts: 'zap_report.html'
         }
+    }
+}
 
     }
 }
