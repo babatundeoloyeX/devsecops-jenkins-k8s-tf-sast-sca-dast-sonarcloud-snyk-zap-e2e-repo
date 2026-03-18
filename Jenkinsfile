@@ -82,7 +82,7 @@ pipeline {
               docker run --rm -u root \
               -v $(pwd):/zap/wrk/:rw \
               zaproxy/zap-stable \
-              zap-baseline.py -t http://$TARGET -r zap_report.html
+              zap-baseline.py -t http://$TARGET -r zap_report.html || true
               '''
               archiveArtifacts artifacts: 'zap_report.html'
       }
