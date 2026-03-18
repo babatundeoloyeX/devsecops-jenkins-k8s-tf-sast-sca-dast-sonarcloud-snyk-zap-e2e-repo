@@ -77,15 +77,14 @@ pipeline {
           steps {
             withKubeConfig([credentialsId: 'kubelogin']) {
               sh '''
-              chmod -R 777 $(pwd)
-
               TARGET=$(kubectl get services/asgbuggy --namespace=devsecops -o json | jq -r ".status.loadBalancer.ingress[0].hostname")
 
-              docker run --rm \
+              docker run --rm -u root \
               -v $(pwd):/zap/wrk/:rw \
               zaproxy/zap-stable \
               zap-baseline.py -t http://$TARGET -r zap_report.html
               '''
+              archiveArtifacts artifacts: 'zap_report.html'
       }
    }
 }
